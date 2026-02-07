@@ -4,6 +4,38 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+fun Project.readConfig(key: String): String? {
+    val envValue = System.getenv(key)?.takeIf { it.isNotBlank() }
+    val propValue = providers.gradleProperty(key).orNull?.takeIf { it.isNotBlank() }
+    return envValue ?: propValue
+}
+
+val releaseVersionName = readConfig("RELEASE_VERSION_NAME") ?: "1.0"
+val releaseVersionCode = readConfig("RELEASE_VERSION_CODE")?.toIntOrNull() ?: 1
+
+val keystorePath = readConfig("ANDROID_KEYSTORE_PATH")
+val keystorePassword = readConfig("ANDROID_KEYSTORE_PASSWORD")
+val signingKeyAlias = readConfig("ANDROID_KEY_ALIAS")
+val signingKeyPassword = readConfig("ANDROID_KEY_PASSWORD")
+
+val hasSigningInputs = listOf(
+    keystorePath,
+    keystorePassword,
+    signingKeyAlias,
+    signingKeyPassword
+).all { !it.isNullOrBlank() }
+
+val isCi = ((System.getenv("CI") ?: providers.gradleProperty("CI").orNull) ?: "false")
+    .equals("true", ignoreCase = true)
+
+if (isCi && !hasSigningInputs) {
+    throw GradleException(
+        "Missing Android release signing config in CI. " +
+            "Required keys: ANDROID_KEYSTORE_PATH, ANDROID_KEYSTORE_PASSWORD, " +
+            "ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD"
+    )
+}
+
 android {
     namespace = "io.github.c1921.namingdict"
     compileSdk {
@@ -14,10 +46,21 @@ android {
         applicationId = "io.github.c1921.namingdict"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = releaseVersionCode
+        versionName = releaseVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        if (hasSigningInputs) {
+            create("release") {
+                storeFile = file(keystorePath!!)
+                storePassword = keystorePassword
+                keyAlias = signingKeyAlias
+                keyPassword = signingKeyPassword
+            }
+        }
     }
 
     buildTypes {
@@ -27,6 +70,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            if (hasSigningInputs) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
     compileOptions {

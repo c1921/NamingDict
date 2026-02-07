@@ -1,0 +1,75 @@
+name: Release APK
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release-apk:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Ensure gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Resolve release version
+        shell: bash
+        run: |
+          TAG_NAME="${GITHUB_REF_NAME}"
+          echo "RELEASE_VERSION_NAME=${TAG_NAME#v}" >> "${GITHUB_ENV}"
+          echo "RELEASE_VERSION_CODE=${GITHUB_RUN_NUMBER}" >> "${GITHUB_ENV}"
+
+      - name: Decode keystore
+        shell: bash
+        run: |
+          KEYSTORE_PATH="${RUNNER_TEMP}/release.keystore"
+          echo "${{ secrets.ANDROID_KEYSTORE_B64 }}" | base64 --decode > "${KEYSTORE_PATH}"
+          echo "ANDROID_KEYSTORE_PATH=${KEYSTORE_PATH}" >> "${GITHUB_ENV}"
+
+      - name: Run unit tests
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ env.ANDROID_KEYSTORE_PATH }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew testDebugUnitTest
+
+      - name: Build release APK
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ env.ANDROID_KEYSTORE_PATH }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          RELEASE_VERSION_NAME: ${{ env.RELEASE_VERSION_NAME }}
+          RELEASE_VERSION_CODE: ${{ env.RELEASE_VERSION_CODE }}
+          CI: "true"
+        run: ./gradlew :app:assembleRelease
+
+      - name: Rename APK artifact
+        shell: bash
+        run: |
+          mv "app/build/outputs/apk/release/app-release.apk" \
+             "app/build/outputs/apk/release/NamingDict-${GITHUB_REF_NAME}.apk"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          prerelease: false
+          draft: false
+          files: app/build/outputs/apk/release/NamingDict-${{ github.ref_name }}.apk
