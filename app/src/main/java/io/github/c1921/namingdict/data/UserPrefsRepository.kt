@@ -44,6 +44,24 @@ class UserPrefsRepository(private val context: Context) {
         )
     }
 
+    suspend fun readWebDavConfig(): WebDavConfig {
+        val preferences = context.userPrefsDataStore.data
+            .catch { exception ->
+                if (exception is IOException) {
+                    emit(emptyPreferences())
+                } else {
+                    throw exception
+                }
+            }
+            .first()
+
+        return WebDavConfig(
+            serverUrl = preferences[WEBDAV_SERVER_URL_KEY].orEmpty(),
+            username = preferences[WEBDAV_USERNAME_KEY].orEmpty(),
+            password = preferences[WEBDAV_PASSWORD_KEY].orEmpty()
+        )
+    }
+
     suspend fun writeFavoritesOrder(order: List<Int>) {
         context.userPrefsDataStore.edit { preferences ->
             preferences[FAVORITE_ORDER_KEY] = json.encodeToString(order)
@@ -57,6 +75,14 @@ class UserPrefsRepository(private val context: Context) {
                 entry.value.sorted()
             }
             preferences[SELECTED_VALUES_KEY] = json.encodeToString(serializableValues)
+        }
+    }
+
+    suspend fun writeWebDavConfig(config: WebDavConfig) {
+        context.userPrefsDataStore.edit { preferences ->
+            preferences[WEBDAV_SERVER_URL_KEY] = config.serverUrl.trim()
+            preferences[WEBDAV_USERNAME_KEY] = config.username.trim()
+            preferences[WEBDAV_PASSWORD_KEY] = config.password
         }
     }
 
@@ -87,6 +113,8 @@ class UserPrefsRepository(private val context: Context) {
         val FAVORITE_ORDER_KEY = stringPreferencesKey("favorite_order")
         val SELECTED_CATEGORY_KEY = stringPreferencesKey("selected_category_key")
         val SELECTED_VALUES_KEY = stringPreferencesKey("selected_values_map")
+        val WEBDAV_SERVER_URL_KEY = stringPreferencesKey("webdav_server_url")
+        val WEBDAV_USERNAME_KEY = stringPreferencesKey("webdav_username")
+        val WEBDAV_PASSWORD_KEY = stringPreferencesKey("webdav_password")
     }
 }
-

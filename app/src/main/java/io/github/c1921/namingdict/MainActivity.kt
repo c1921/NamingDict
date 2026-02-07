@@ -9,6 +9,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.github.c1921.namingdict.data.DictionaryRepository
 import io.github.c1921.namingdict.data.UserPrefsRepository
+import io.github.c1921.namingdict.data.WebDavRepository
 import io.github.c1921.namingdict.ui.AppRoot
 import io.github.c1921.namingdict.ui.DictViewModel
 import io.github.c1921.namingdict.ui.theme.NamingDictTheme
@@ -22,8 +23,9 @@ class MainActivity : ComponentActivity() {
                 val context = LocalContext.current
                 val repository = remember { DictionaryRepository(context) }
                 val userPrefsRepository = remember { UserPrefsRepository(context) }
+                val webDavRepository = remember { WebDavRepository() }
                 val viewModel: DictViewModel = viewModel(
-                    factory = DictViewModel.factory(repository, userPrefsRepository)
+                    factory = DictViewModel.factory(repository, userPrefsRepository, webDavRepository)
                 )
                 AppRoot(viewModel = viewModel)
             }

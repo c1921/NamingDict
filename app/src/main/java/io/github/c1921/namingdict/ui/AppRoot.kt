@@ -39,6 +39,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedCard
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Tab
@@ -116,6 +117,9 @@ fun AppRoot(viewModel: DictViewModel) {
             onToggleValue = viewModel::toggleValue,
             onClearCategory = viewModel::clearCategory,
             onClearAll = viewModel::clearAll,
+            onUpdateWebDavConfig = viewModel::updateWebDavConfig,
+            onManualUploadFavorites = viewModel::manualUploadFavorites,
+            onManualDownloadFavorites = viewModel::manualDownloadFavoritesOverwriteLocal,
             onToggleFavorite = requestToggleFavorite,
             onSelectEntry = viewModel::selectEntry
         )
@@ -179,6 +183,9 @@ private fun MainTabbedContent(
     onToggleValue: (IndexCategory, String) -> Unit,
     onClearCategory: (IndexCategory) -> Unit,
     onClearAll: () -> Unit,
+    onUpdateWebDavConfig: (String, String, String) -> Unit,
+    onManualUploadFavorites: () -> Unit,
+    onManualDownloadFavorites: () -> Unit,
     onToggleFavorite: (Int) -> Unit,
     onSelectEntry: (Int) -> Unit
 ) {
@@ -256,6 +263,10 @@ private fun MainTabbedContent(
             )
 
             MainTab.Settings -> SettingsScreen(
+                uiState = uiState,
+                onUpdateWebDavConfig = onUpdateWebDavConfig,
+                onManualUploadFavorites = onManualUploadFavorites,
+                onManualDownloadFavorites = onManualDownloadFavorites,
                 modifier = Modifier.padding(innerPadding)
             )
         }
@@ -423,14 +434,116 @@ private fun FavoritesScreen(
 }
 
 @Composable
-private fun SettingsScreen(modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
+private fun SettingsScreen(
+    uiState: UiState,
+    onUpdateWebDavConfig: (String, String, String) -> Unit,
+    onManualUploadFavorites: () -> Unit,
+    onManualDownloadFavorites: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val webDavConfig = uiState.webDavConfig
+    var serverUrl by rememberSaveable(webDavConfig.serverUrl) { mutableStateOf(webDavConfig.serverUrl) }
+    var username by rememberSaveable(webDavConfig.username) { mutableStateOf(webDavConfig.username) }
+    var password by rememberSaveable(webDavConfig.password) { mutableStateOf(webDavConfig.password) }
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text(
-            text = stringResource(R.string.settings_placeholder),
-            style = MaterialTheme.typography.bodyLarge
+            text = stringResource(R.string.settings_webdav_title),
+            style = MaterialTheme.typography.titleMedium
+        )
+        OutlinedTextField(
+            value = serverUrl,
+            onValueChange = { serverUrl = it },
+            label = { Text(text = stringResource(R.string.settings_webdav_server_url)) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+        OutlinedTextField(
+            value = username,
+            onValueChange = { username = it },
+            label = { Text(text = stringResource(R.string.settings_webdav_username)) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+        OutlinedTextField(
+            value = password,
+            onValueChange = { password = it },
+            label = { Text(text = stringResource(R.string.settings_webdav_password)) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Text(
+            text = stringResource(R.string.settings_webdav_default_location),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        Button(
+            onClick = {
+                onUpdateWebDavConfig(
+                    serverUrl,
+                    username,
+                    password
+                )
+            },
+            enabled = !uiState.syncInProgress,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(text = stringResource(R.string.settings_webdav_save))
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Button(
+                onClick = onManualUploadFavorites,
+                enabled = !uiState.syncInProgress,
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(text = stringResource(R.string.settings_webdav_upload))
+            }
+            Button(
+                onClick = onManualDownloadFavorites,
+                enabled = !uiState.syncInProgress,
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(text = stringResource(R.string.settings_webdav_download))
+            }
+        }
+
+        if (serverUrl.trim().startsWith("http://", ignoreCase = true)) {
+            Text(
+                text = stringResource(R.string.settings_webdav_http_warning),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error
+            )
+        }
+
+        Text(
+            text = stringResource(R.string.settings_webdav_sync_status),
+            style = MaterialTheme.typography.titleSmall
+        )
+        if (uiState.syncInProgress) {
+            Text(
+                text = stringResource(R.string.settings_webdav_status_syncing),
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
+        Text(
+            text = uiState.lastSyncMessage ?: stringResource(R.string.settings_webdav_status_idle),
+            style = MaterialTheme.typography.bodyMedium,
+            color = if ((uiState.lastSyncMessage ?: "").contains("失败")) {
+                MaterialTheme.colorScheme.error
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            }
         )
     }
 }

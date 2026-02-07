@@ -5,11 +5,17 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import io.github.c1921.namingdict.data.DictionaryRepository
+import io.github.c1921.namingdict.data.FavoritesSyncPayload
 import io.github.c1921.namingdict.data.FilterEngine
 import io.github.c1921.namingdict.data.IndexCategory
+import io.github.c1921.namingdict.data.SyncResult
 import io.github.c1921.namingdict.data.UserPrefsRepository
+import io.github.c1921.namingdict.data.WebDavConfig
+import io.github.c1921.namingdict.data.WebDavRepository
 import io.github.c1921.namingdict.data.model.DictEntry
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -27,12 +33,16 @@ data class UiState(
     val filteredEntries: List<DictEntry> = emptyList(),
     val favoriteIds: Set<Int> = emptySet(),
     val favoriteEntries: List<DictEntry> = emptyList(),
+    val webDavConfig: WebDavConfig = WebDavConfig(),
+    val syncInProgress: Boolean = false,
+    val lastSyncMessage: String? = null,
     val selectedEntryId: Int? = null
 )
 
 class DictViewModel(
     private val repository: DictionaryRepository,
-    private val userPrefsRepository: UserPrefsRepository
+    private val userPrefsRepository: UserPrefsRepository,
+    private val webDavRepository: WebDavRepository
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(UiState())
     val uiState: StateFlow<UiState> = _uiState
@@ -42,6 +52,7 @@ class DictViewModel(
     private var idToEntry: Map<Int, DictEntry> = emptyMap()
     private var allIds: Set<Int> = emptySet()
     private var favoriteOrder: List<Int> = emptyList()
+    private var autoUploadJob: Job? = null
 
     init {
         load()
@@ -108,6 +119,83 @@ class DictViewModel(
             favoriteEntries = newFavoriteEntries
         )
         persistFavoritesOrder(favoriteOrder)
+        scheduleAutoUploadFavorites()
+    }
+
+    fun updateWebDavConfig(
+        serverUrl: String,
+        username: String,
+        password: String
+    ) {
+        val newConfig = WebDavConfig(
+            serverUrl = serverUrl.trim(),
+            username = username.trim(),
+            password = password
+        )
+        _uiState.value = _uiState.value.copy(
+            webDavConfig = newConfig,
+            lastSyncMessage = "WebDAV 配置已保存"
+        )
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                userPrefsRepository.writeWebDavConfig(newConfig)
+            }.onFailure { exception ->
+                Log.w(TAG, "Failed to persist WebDAV config.", exception)
+                postSyncMessage("保存配置失败：${exception.message ?: "未知错误"}")
+            }
+        }
+    }
+
+    fun manualUploadFavorites() {
+        autoUploadJob?.cancel()
+        if (_uiState.value.syncInProgress) {
+            return
+        }
+        viewModelScope.launch {
+            uploadFavoritesNow(isAuto = false)
+        }
+    }
+
+    fun manualDownloadFavoritesOverwriteLocal() {
+        autoUploadJob?.cancel()
+        if (_uiState.value.syncInProgress) {
+            return
+        }
+        viewModelScope.launch {
+            val config = _uiState.value.webDavConfig
+            if (!config.isComplete()) {
+                postSyncMessage("WebDAV 配置不完整，无法下载")
+                return@launch
+            }
+
+            _uiState.value = _uiState.value.copy(syncInProgress = true)
+            val downloadResult = withContext(Dispatchers.IO) {
+                webDavRepository.downloadFavorites(config)
+            }
+            downloadResult.fold(
+                onSuccess = { payload ->
+                    val sanitizedOrder = payload.favoriteOrder
+                        .distinct()
+                        .filter { favoriteId -> idToEntry.containsKey(favoriteId) }
+                    favoriteOrder = sanitizedOrder
+                    val favoriteIds = sanitizedOrder.toSet()
+                    val favoriteEntries = sanitizedOrder.mapNotNull { idToEntry[it] }
+                    _uiState.value = _uiState.value.copy(
+                        favoriteIds = favoriteIds,
+                        favoriteEntries = favoriteEntries,
+                        syncInProgress = false,
+                        lastSyncMessage = "下载成功，已覆盖本地收藏（${favoriteIds.size}）"
+                    )
+                    persistFavoritesOrder(sanitizedOrder)
+                },
+                onFailure = { exception ->
+                    _uiState.value = _uiState.value.copy(
+                        syncInProgress = false,
+                        lastSyncMessage = "下载失败：${exception.message ?: "网络异常"}"
+                    )
+                }
+            )
+        }
     }
 
     fun selectEntry(id: Int) {
@@ -124,6 +212,7 @@ class DictViewModel(
             try {
                 val data = repository.loadAll()
                 val snapshot = userPrefsRepository.readSnapshot()
+                val webDavConfig = userPrefsRepository.readWebDavConfig()
 
                 entries = data.entries
                 index = data.index
@@ -151,7 +240,8 @@ class DictViewModel(
                     filteredIds = filteredIds,
                     filteredEntries = filteredEntries,
                     favoriteIds = favoriteIds,
-                    favoriteEntries = favoriteEntries
+                    favoriteEntries = favoriteEntries,
+                    webDavConfig = webDavConfig
                 )
             } catch (ex: Exception) {
                 _uiState.value = UiState(
@@ -231,17 +321,67 @@ class DictViewModel(
         }
     }
 
+    private fun scheduleAutoUploadFavorites() {
+        autoUploadJob?.cancel()
+        autoUploadJob = viewModelScope.launch {
+            delay(AUTO_UPLOAD_DELAY_MS)
+            uploadFavoritesNow(isAuto = true)
+        }
+    }
+
+    private suspend fun uploadFavoritesNow(isAuto: Boolean) {
+        val config = _uiState.value.webDavConfig
+        if (!config.isComplete()) {
+            val message = if (isAuto) {
+                "自动同步已跳过：WebDAV 配置不完整"
+            } else {
+                "WebDAV 配置不完整，无法上传"
+            }
+            postSyncMessage(message)
+            return
+        }
+
+        _uiState.value = _uiState.value.copy(syncInProgress = true)
+        val payload = FavoritesSyncPayload(
+            version = 1,
+            updatedAt = System.currentTimeMillis(),
+            favoriteOrder = favoriteOrder.toList()
+        )
+        val syncResult = withContext(Dispatchers.IO) {
+            webDavRepository.uploadFavorites(config, payload)
+        }
+        applyUploadResult(syncResult = syncResult, isAuto = isAuto)
+    }
+
+    private fun applyUploadResult(syncResult: SyncResult, isAuto: Boolean) {
+        val message = if (isAuto) {
+            "自动同步：${syncResult.message}"
+        } else {
+            syncResult.message
+        }
+        _uiState.value = _uiState.value.copy(
+            syncInProgress = false,
+            lastSyncMessage = message
+        )
+    }
+
+    private fun postSyncMessage(message: String) {
+        _uiState.value = _uiState.value.copy(lastSyncMessage = message)
+    }
+
     companion object {
         private const val TAG = "DictViewModel"
+        private const val AUTO_UPLOAD_DELAY_MS = 30_000L
 
         fun factory(
             repository: DictionaryRepository,
-            userPrefsRepository: UserPrefsRepository
+            userPrefsRepository: UserPrefsRepository,
+            webDavRepository: WebDavRepository
         ): ViewModelProvider.Factory {
             return object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                    return DictViewModel(repository, userPrefsRepository) as T
+                    return DictViewModel(repository, userPrefsRepository, webDavRepository) as T
                 }
             }
         }

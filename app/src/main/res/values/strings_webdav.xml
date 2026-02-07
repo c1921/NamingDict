@@ -1,0 +1,14 @@
+<resources>
+    <string name="settings_webdav_title">WebDAV 同步</string>
+    <string name="settings_webdav_server_url">服务器地址</string>
+    <string name="settings_webdav_username">用户名</string>
+    <string name="settings_webdav_password">密码</string>
+    <string name="settings_webdav_default_location">默认保存位置：/NamingDict/favorites.json（目录不存在会自动创建）</string>
+    <string name="settings_webdav_save">保存配置</string>
+    <string name="settings_webdav_upload">上传收藏</string>
+    <string name="settings_webdav_download">下载收藏</string>
+    <string name="settings_webdav_sync_status">同步状态</string>
+    <string name="settings_webdav_status_idle">尚未执行同步</string>
+    <string name="settings_webdav_status_syncing">同步中...</string>
+    <string name="settings_webdav_http_warning">当前为 HTTP 明文传输，请注意账号和数据安全。</string>
+</resources>
