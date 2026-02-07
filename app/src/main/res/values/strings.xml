@@ -1,17 +1,29 @@
 <resources>
-    <string name="app_name">NamingDict</string>
+    <string name="app_name">起名字典</string>
     <string name="tab_filter">筛选</string>
     <string name="tab_dictionary">字典</string>
     <string name="tab_settings">设置</string>
     <string name="settings_placeholder">设置页建设中</string>
-    <string name="filter_results_compact">结果 %1$d</string>
-    <string name="clear_all">Clear All</string>
-    <string name="clear_category">Clear Category</string>
-    <string name="selected_filters">Selected Filters</string>
-    <string name="results">Results: %1$d</string>
-    <string name="no_results">No entries match the current filters.</string>
-    <string name="loading">Loading dictionary...</string>
-    <string name="error_loading">Failed to load data.</string>
-    <string name="retry">Retry</string>
-    <string name="back">Back</string>
+    <string name="filter_results_compact">结果：%1$d</string>
+    <string name="clear_all">清空全部</string>
+    <string name="clear_category">清空本类</string>
+    <string name="selected_filters">已选条件</string>
+    <string name="results">结果：%1$d</string>
+    <string name="no_results">当前筛选下无匹配条目</string>
+    <string name="loading">正在加载字典...</string>
+    <string name="error_loading">数据加载失败</string>
+    <string name="retry">重试</string>
+    <string name="back">返回</string>
+
+    <string name="detail_pinyin">拼音</string>
+    <string name="detail_initials">声母</string>
+    <string name="detail_finals">韵母</string>
+    <string name="detail_tones">声调</string>
+    <string name="detail_radical">部首</string>
+    <string name="detail_strokes_total">总笔画</string>
+    <string name="detail_strokes_other">部外笔画</string>
+    <string name="detail_structure_type">结构类型</string>
+    <string name="detail_unicode">统一码</string>
+    <string name="detail_gscc">通用规范编码</string>
+    <string name="detail_definitions">释义</string>
 </resources>

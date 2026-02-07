@@ -379,26 +379,26 @@ private fun DictDetailScreen(entry: DictEntry, onBack: () -> Unit) {
             Text(text = entry.char, style = MaterialTheme.typography.displayLarge)
             Spacer(modifier = Modifier.height(16.dp))
 
-            DetailRow(label = "Pinyin", value = formatList(entry.phonetics.pinyin))
-            DetailRow(label = "Initials", value = formatList(entry.phonetics.initials))
-            DetailRow(label = "Finals", value = formatList(entry.phonetics.finals))
-            DetailRow(label = "Tones", value = formatIntList(entry.phonetics.tones))
+            DetailRow(label = stringResource(R.string.detail_pinyin), value = formatList(entry.phonetics.pinyin))
+            DetailRow(label = stringResource(R.string.detail_initials), value = formatList(entry.phonetics.initials))
+            DetailRow(label = stringResource(R.string.detail_finals), value = formatList(entry.phonetics.finals))
+            DetailRow(label = stringResource(R.string.detail_tones), value = formatIntList(entry.phonetics.tones))
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            DetailRow(label = "Radical", value = entry.structure.radical.ifBlank { "-" })
-            DetailRow(label = "Strokes Total", value = entry.structure.strokesTotal.toString())
-            DetailRow(label = "Strokes Other", value = entry.structure.strokesOther.toString())
-            DetailRow(label = "Structure Type", value = entry.structure.structureType.ifBlank { "-" })
+            DetailRow(label = stringResource(R.string.detail_radical), value = entry.structure.radical.ifBlank { "-" })
+            DetailRow(label = stringResource(R.string.detail_strokes_total), value = entry.structure.strokesTotal.toString())
+            DetailRow(label = stringResource(R.string.detail_strokes_other), value = entry.structure.strokesOther.toString())
+            DetailRow(label = stringResource(R.string.detail_structure_type), value = entry.structure.structureType.ifBlank { "-" })
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            DetailRow(label = "Unicode", value = entry.unicode.ifBlank { "-" })
-            DetailRow(label = "GSCC", value = entry.gscc.ifBlank { "-" })
+            DetailRow(label = stringResource(R.string.detail_unicode), value = entry.unicode.ifBlank { "-" })
+            DetailRow(label = stringResource(R.string.detail_gscc), value = entry.gscc.ifBlank { "-" })
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            Text(text = "Definitions", style = MaterialTheme.typography.titleMedium)
+            Text(text = stringResource(R.string.detail_definitions), style = MaterialTheme.typography.titleMedium)
             Spacer(modifier = Modifier.height(8.dp))
             if (entry.definitions.isEmpty()) {
                 Text(text = "-")

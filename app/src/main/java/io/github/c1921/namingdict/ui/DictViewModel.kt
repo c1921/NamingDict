@@ -109,7 +109,7 @@ class DictViewModel(private val repository: DictionaryRepository) : ViewModel() 
             } catch (ex: Exception) {
                 _uiState.value = UiState(
                     isLoading = false,
-                    error = ex.message ?: "Failed to load data"
+                    error = ex.message ?: "数据加载失败"
                 )
             }
         }
