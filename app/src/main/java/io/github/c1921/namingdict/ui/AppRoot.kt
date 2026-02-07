@@ -22,6 +22,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material.icons.outlined.FilterList
@@ -66,6 +67,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import io.github.c1921.namingdict.BuildConfig
 import io.github.c1921.namingdict.R
 import io.github.c1921.namingdict.data.IndexCategory
 import io.github.c1921.namingdict.data.sortIndexValues
@@ -78,6 +80,12 @@ private enum class MainTab(val titleResId: Int) {
     Dictionary(R.string.tab_dictionary),
     Favorites(R.string.tab_favorites),
     Settings(R.string.tab_settings)
+}
+
+private enum class SettingsPage(val titleResId: Int) {
+    Home(R.string.tab_settings),
+    BackupRestore(R.string.settings_backup_restore_title),
+    About(R.string.settings_about_title)
 }
 
 @Composable
@@ -196,12 +204,35 @@ private fun MainTabbedContent(
     onSelectEntry: (Int) -> Unit
 ) {
     var selectedTab by rememberSaveable { mutableStateOf(MainTab.Dictionary) }
+    var settingsPage by rememberSaveable { mutableStateOf(SettingsPage.Home) }
     val showClearAll = selectedTab == MainTab.Filter && uiState.selectedValues.values.any { it.isNotEmpty() }
+    val isSettingsSubPage = selectedTab == MainTab.Settings && settingsPage != SettingsPage.Home
+
+    BackHandler(enabled = isSettingsSubPage) {
+        settingsPage = SettingsPage.Home
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(text = stringResource(selectedTab.titleResId)) },
+                title = {
+                    val titleResId = if (selectedTab == MainTab.Settings) {
+                        settingsPage.titleResId
+                    } else {
+                        selectedTab.titleResId
+                    }
+                    Text(text = stringResource(titleResId))
+                },
+                navigationIcon = {
+                    if (isSettingsSubPage) {
+                        IconButton(onClick = { settingsPage = SettingsPage.Home }) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(R.string.back)
+                            )
+                        }
+                    }
+                },
                 actions = {
                     if (selectedTab == MainTab.Filter) {
                         Text(
@@ -226,7 +257,12 @@ private fun MainTabbedContent(
                 MainTab.entries.forEach { tab ->
                     NavigationBarItem(
                         selected = tab == selectedTab,
-                        onClick = { selectedTab = tab },
+                        onClick = {
+                            selectedTab = tab
+                            if (tab != MainTab.Settings) {
+                                settingsPage = SettingsPage.Home
+                            }
+                        },
                         icon = {
                             val icon = when (tab) {
                                 MainTab.Filter -> Icons.Outlined.FilterList
@@ -273,6 +309,9 @@ private fun MainTabbedContent(
                 onUpdateWebDavConfig = onUpdateWebDavConfig,
                 onManualUploadFavorites = onManualUploadFavorites,
                 onManualDownloadFavorites = onManualDownloadFavorites,
+                settingsPage = settingsPage,
+                onOpenBackupRestore = { settingsPage = SettingsPage.BackupRestore },
+                onOpenAbout = { settingsPage = SettingsPage.About },
                 modifier = Modifier.padding(innerPadding)
             )
         }
@@ -445,6 +484,64 @@ private fun SettingsScreen(
     onUpdateWebDavConfig: (String, String, String) -> Unit,
     onManualUploadFavorites: () -> Unit,
     onManualDownloadFavorites: () -> Unit,
+    settingsPage: SettingsPage,
+    onOpenBackupRestore: () -> Unit,
+    onOpenAbout: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    when (settingsPage) {
+        SettingsPage.Home -> SettingsHomeScreen(
+            onOpenBackupRestore = onOpenBackupRestore,
+            onOpenAbout = onOpenAbout,
+            modifier = modifier
+        )
+        SettingsPage.BackupRestore -> SettingsBackupRestoreScreen(
+            uiState = uiState,
+            onUpdateWebDavConfig = onUpdateWebDavConfig,
+            onManualUploadFavorites = onManualUploadFavorites,
+            onManualDownloadFavorites = onManualDownloadFavorites,
+            modifier = modifier
+        )
+        SettingsPage.About -> SettingsAboutScreen(modifier = modifier)
+    }
+}
+
+@Composable
+private fun SettingsHomeScreen(
+    onOpenBackupRestore: () -> Unit,
+    onOpenAbout: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(vertical = 8.dp)
+    ) {
+        ListItem(
+            headlineContent = { Text(text = stringResource(R.string.settings_entry_backup_restore)) },
+            supportingContent = { Text(text = stringResource(R.string.settings_entry_backup_restore_desc)) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onOpenBackupRestore)
+        )
+        HorizontalDivider()
+        ListItem(
+            headlineContent = { Text(text = stringResource(R.string.settings_entry_about)) },
+            supportingContent = { Text(text = stringResource(R.string.settings_entry_about_desc)) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onOpenAbout)
+        )
+        HorizontalDivider()
+    }
+}
+
+@Composable
+private fun SettingsBackupRestoreScreen(
+    uiState: UiState,
+    onUpdateWebDavConfig: (String, String, String) -> Unit,
+    onManualUploadFavorites: () -> Unit,
+    onManualDownloadFavorites: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val webDavConfig = uiState.webDavConfig
@@ -575,6 +672,33 @@ private fun SettingsScreen(
             } else {
                 MaterialTheme.colorScheme.onSurfaceVariant
             }
+        )
+    }
+}
+
+@Composable
+private fun SettingsAboutScreen(
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text(
+            text = stringResource(R.string.app_name),
+            style = MaterialTheme.typography.titleLarge
+        )
+        Text(
+            text = stringResource(R.string.settings_app_version, BuildConfig.VERSION_NAME),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            text = stringResource(R.string.settings_about_description),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }

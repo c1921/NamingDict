@@ -10,7 +10,59 @@ fun Project.readConfig(key: String): String? {
     return envValue ?: propValue
 }
 
-val releaseVersionName = readConfig("RELEASE_VERSION_NAME") ?: "1.0"
+private val gitDescribePattern = Regex(
+    """^v(\d+\.\d+\.\d+)(?:-(\d+)-g([0-9a-fA-F]+))?(-dirty)?$"""
+)
+
+fun parseGitDescribeToVersionName(raw: String): String? {
+    val describe = raw.trim()
+    val match = gitDescribePattern.matchEntire(describe) ?: return null
+    val baseVersion = match.groupValues[1]
+    val commitDistance = match.groupValues[2].takeIf { it.isNotBlank() }
+    val shortSha = match.groupValues[3].takeIf { it.isNotBlank() }?.lowercase()
+    val isDirty = match.groupValues[4].isNotBlank()
+
+    return if (commitDistance != null && shortSha != null) {
+        "$baseVersion-dev.$commitDistance+$shortSha" + if (isDirty) ".dirty" else ""
+    } else if (isDirty) {
+        "$baseVersion-dirty"
+    } else {
+        baseVersion
+    }
+}
+
+fun Project.deriveVersionNameFromGit(): String? {
+    val process = runCatching {
+        ProcessBuilder(
+            "git",
+            "describe",
+            "--tags",
+            "--match",
+            "v[0-9]*",
+            "--dirty",
+            "--abbrev=7"
+        )
+            .directory(rootDir)
+            .redirectErrorStream(true)
+            .start()
+    }.getOrNull() ?: return null
+
+    val output = runCatching {
+        process.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText().trim() }
+    }.getOrElse {
+        process.destroyForcibly()
+        return null
+    }
+
+    val exitCode = runCatching { process.waitFor() }.getOrNull() ?: return null
+    if (exitCode != 0) return null
+
+    return parseGitDescribeToVersionName(output)
+}
+
+val releaseVersionName = readConfig("RELEASE_VERSION_NAME")
+    ?: deriveVersionNameFromGit()
+    ?: "0.0.0-dev"
 val releaseVersionCode = readConfig("RELEASE_VERSION_CODE")?.toIntOrNull() ?: 1
 
 val keystorePath = readConfig("ANDROID_KEYSTORE_PATH")
@@ -81,6 +133,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -106,4 +159,13 @@ dependencies {
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
+}
+
+tasks.register("printResolvedVersion") {
+    group = "help"
+    description = "Print resolved app versionName and versionCode."
+    doLast {
+        println("releaseVersionName=$releaseVersionName")
+        println("releaseVersionCode=$releaseVersionCode")
+    }
 }
