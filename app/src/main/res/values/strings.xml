@@ -1,5 +1,10 @@
 <resources>
     <string name="app_name">NamingDict</string>
+    <string name="tab_filter">筛选</string>
+    <string name="tab_dictionary">字典</string>
+    <string name="tab_settings">设置</string>
+    <string name="settings_placeholder">设置页建设中</string>
+    <string name="filter_results_compact">结果 %1$d</string>
     <string name="clear_all">Clear All</string>
     <string name="clear_category">Clear Category</string>
     <string name="selected_filters">Selected Filters</string>
