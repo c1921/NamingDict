@@ -15,6 +15,7 @@ import io.github.c1921.namingdict.data.WebDavConfig
 import io.github.c1921.namingdict.data.WebDavRepository
 import io.github.c1921.namingdict.data.model.DictEntry
 import io.github.c1921.namingdict.data.model.GivenNameMode
+import io.github.c1921.namingdict.data.model.NamingGender
 import io.github.c1921.namingdict.data.model.NamingScheme
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -174,6 +175,7 @@ class DictViewModel internal constructor(
         val newScheme = NamingScheme(
             id = allocateNamingSchemeId(),
             givenNameMode = GivenNameMode.Double,
+            gender = NamingGender.Unisex,
             slot1 = "",
             slot2 = ""
         )
@@ -235,6 +237,25 @@ class DictViewModel internal constructor(
                 current.namingActiveSlotIndex
             }
         )
+        _uiState.value = updated
+        persistNamingDraft(updated)
+        scheduleAutoUploadData()
+    }
+
+    fun setNamingGender(id: Long, gender: NamingGender) {
+        val current = _uiState.value
+        val targetIndex = current.namingSchemes.indexOfFirst { it.id == id }
+        if (targetIndex < 0) {
+            return
+        }
+        val target = current.namingSchemes[targetIndex]
+        if (target.gender == gender) {
+            return
+        }
+        val newSchemes = current.namingSchemes.toMutableList().apply {
+            this[targetIndex] = target.copy(gender = gender)
+        }
+        val updated = current.copy(namingSchemes = newSchemes)
         _uiState.value = updated
         persistNamingDraft(updated)
         scheduleAutoUploadData()

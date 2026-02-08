@@ -10,6 +10,7 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.test.core.app.ApplicationProvider
 import io.github.c1921.namingdict.data.model.GivenNameMode
+import io.github.c1921.namingdict.data.model.NamingGender
 import io.github.c1921.namingdict.data.model.NamingScheme
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -103,25 +104,27 @@ class UserPrefsRepositoryRobolectricTest {
             NamingScheme(
                 id = 10L,
                 givenNameMode = GivenNameMode.Double,
-                slot1 = "安",
-                slot2 = "宁"
+                gender = NamingGender.Female,
+                slot1 = "A",
+                slot2 = "B"
             ),
             NamingScheme(
                 id = 11L,
                 givenNameMode = GivenNameMode.Single,
-                slot1 = "禾",
+                gender = NamingGender.Male,
+                slot1 = "C",
                 slot2 = ""
             )
         )
         repository.writeNamingDraft(
-            surname = "欧阳",
+            surname = "Ouyang",
             schemes = schemes,
             activeSchemeId = 11L,
             activeSlotIndex = 1
         )
 
         val snapshot = repository.readSnapshot()
-        assertEquals("欧阳", snapshot.namingSurname)
+        assertEquals("Ouyang", snapshot.namingSurname)
         assertEquals(schemes, snapshot.namingSchemes)
         assertEquals(11L, snapshot.namingActiveSchemeId)
         assertEquals(1, snapshot.namingActiveSlotIndex)
@@ -130,17 +133,29 @@ class UserPrefsRepositoryRobolectricTest {
     @Test
     fun namingDraft_invalidJson_returnsEmptySchemes() = runTest {
         userPrefsDataStore().edit { preferences ->
-            preferences[NAMING_SURNAME_KEY] = "张"
+            preferences[NAMING_SURNAME_KEY] = "Zhang"
             preferences[NAMING_SCHEMES_JSON_KEY] = "{not-json}"
             preferences[NAMING_ACTIVE_SCHEME_ID_KEY] = 99L
             preferences[NAMING_ACTIVE_SLOT_INDEX_KEY] = 9
         }
 
         val snapshot = repository.readSnapshot()
-        assertEquals("张", snapshot.namingSurname)
+        assertEquals("Zhang", snapshot.namingSurname)
         assertEquals(emptyList<NamingScheme>(), snapshot.namingSchemes)
         assertEquals(99L, snapshot.namingActiveSchemeId)
         assertEquals(9, snapshot.namingActiveSlotIndex)
+    }
+
+    @Test
+    fun namingDraft_missingGenderDefaultsToUnisex() = runTest {
+        userPrefsDataStore().edit { preferences ->
+            preferences[NAMING_SCHEMES_JSON_KEY] =
+                """[{"id":21,"givenNameMode":"Double","slot1":"A","slot2":"B"}]"""
+        }
+
+        val snapshot = repository.readSnapshot()
+        assertEquals(1, snapshot.namingSchemes.size)
+        assertEquals(NamingGender.Unisex, snapshot.namingSchemes.first().gender)
     }
 
     private suspend fun clearUserPrefsDataStore() {

@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import io.github.c1921.namingdict.R
 import io.github.c1921.namingdict.data.IndexCategory
 import io.github.c1921.namingdict.data.model.GivenNameMode
+import io.github.c1921.namingdict.data.model.NamingGender
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -60,6 +61,7 @@ internal fun MainTabbedContent(
     onAddNamingScheme: () -> Unit,
     onRemoveNamingScheme: (Long) -> Unit,
     onSetNamingMode: (Long, GivenNameMode) -> Unit,
+    onSetNamingGender: (Long, NamingGender) -> Unit,
     onSetActiveNamingSlot: (Long, Int) -> Unit,
     onUpdateNamingSlotText: (Long, Int, String) -> Unit,
     onFillActiveSlotFromFavorite: (String) -> Unit,
@@ -213,6 +215,7 @@ internal fun MainTabbedContent(
                 onAddNamingScheme = onAddNamingScheme,
                 onRemoveNamingScheme = onRemoveNamingScheme,
                 onSetNamingMode = onSetNamingMode,
+                onSetNamingGender = onSetNamingGender,
                 onSetActiveNamingSlot = onSetActiveNamingSlot,
                 onUpdateNamingSlotText = onUpdateNamingSlotText,
                 onFillActiveSlotFromFavorite = onFillActiveSlotFromFavorite,

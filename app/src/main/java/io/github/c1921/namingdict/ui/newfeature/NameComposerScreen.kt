@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import io.github.c1921.namingdict.R
 import io.github.c1921.namingdict.data.model.DictEntry
 import io.github.c1921.namingdict.data.model.GivenNameMode
+import io.github.c1921.namingdict.data.model.NamingGender
 import io.github.c1921.namingdict.data.model.NamingScheme
 
 private const val SCHEME_WARNING_THRESHOLD = 50
@@ -57,6 +58,7 @@ internal fun NameComposerScreen(
     onAddNamingScheme: () -> Unit,
     onRemoveNamingScheme: (Long) -> Unit,
     onSetNamingMode: (Long, GivenNameMode) -> Unit,
+    onSetNamingGender: (Long, NamingGender) -> Unit,
     onSetActiveNamingSlot: (Long, Int) -> Unit,
     onUpdateNamingSlotText: (Long, Int, String) -> Unit,
     onFillActiveSlotFromFavorite: (String) -> Unit,
@@ -67,6 +69,7 @@ internal fun NameComposerScreen(
     var editingSchemeId by rememberSaveable { mutableStateOf<Long?>(null) }
     var editingOpenedFromAdd by rememberSaveable { mutableStateOf(false) }
     var editingSnapshotMode by rememberSaveable { mutableStateOf(GivenNameMode.Double) }
+    var editingSnapshotGender by rememberSaveable { mutableStateOf(NamingGender.Unisex) }
     var editingSnapshotSlot1 by rememberSaveable { mutableStateOf("") }
     var editingSnapshotSlot2 by rememberSaveable { mutableStateOf("") }
     var preEditActiveSchemeId by rememberSaveable { mutableStateOf<Long?>(null) }
@@ -91,6 +94,7 @@ internal fun NameComposerScreen(
             editingSchemeId = scheme.id
             editingOpenedFromAdd = openedFromAdd
             editingSnapshotMode = scheme.givenNameMode
+            editingSnapshotGender = scheme.gender
             editingSnapshotSlot1 = scheme.slot1
             editingSnapshotSlot2 = scheme.slot2
             preEditActiveSchemeId = activeSchemeId
@@ -245,8 +249,14 @@ internal fun NameComposerScreen(
                         scheme = scheme,
                         placeholder = stringResource(R.string.naming_preview_row_placeholder)
                     )
+                    val genderLabel = when (scheme.gender) {
+                        NamingGender.Unisex -> stringResource(R.string.naming_gender_unisex)
+                        NamingGender.Male -> stringResource(R.string.naming_gender_male)
+                        NamingGender.Female -> stringResource(R.string.naming_gender_female)
+                    }
                     SchemeRowItem(
                         previewText = previewText,
+                        genderLabel = genderLabel,
                         onEdit = {
                             openEditorSession(
                                 scheme,
@@ -315,6 +325,7 @@ internal fun NameComposerScreen(
         )
         val hasFilledContent = editingScheme.slot1.isNotBlank() || editingScheme.slot2.isNotBlank()
         val hasContentChanged = editingScheme.givenNameMode != editingSnapshotMode ||
+            editingScheme.gender != editingSnapshotGender ||
             editingScheme.slot1 != editingSnapshotSlot1 ||
             editingScheme.slot2 != editingSnapshotSlot2
         val shouldConfirmCancel = if (editingOpenedFromAdd) {
@@ -328,6 +339,7 @@ internal fun NameComposerScreen(
                 onRemoveNamingScheme(editingId)
             } else {
                 onSetNamingMode(editingId, editingSnapshotMode)
+                onSetNamingGender(editingId, editingSnapshotGender)
                 onUpdateNamingSlotText(editingId, 0, editingSnapshotSlot1)
                 onUpdateNamingSlotText(editingId, 1, editingSnapshotSlot2)
             }
@@ -350,6 +362,7 @@ internal fun NameComposerScreen(
                 }
             },
             onSetNamingMode = { mode -> onSetNamingMode(editingScheme.id, mode) },
+            onSetNamingGender = { gender -> onSetNamingGender(editingScheme.id, gender) },
             onSetActiveNamingSlot = { slotIndex -> onSetActiveNamingSlot(editingScheme.id, slotIndex) },
             onUpdateNamingSlotText = { slotIndex, value ->
                 onUpdateNamingSlotText(editingScheme.id, slotIndex, value)
@@ -440,6 +453,7 @@ internal fun NameComposerScreen(
 @Composable
 private fun SchemeRowItem(
     previewText: String,
+    genderLabel: String,
     onEdit: () -> Unit,
     onRemove: () -> Unit
 ) {
@@ -463,6 +477,12 @@ private fun SchemeRowItem(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
+            Text(
+                text = genderLabel,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 8.dp)
+            )
             IconButton(onClick = onRemove) {
                 Icon(
                     imageVector = Icons.Outlined.Delete,
@@ -483,6 +503,7 @@ private fun SchemeEditorDialog(
     onConfirm: () -> Unit,
     onCancel: () -> Unit,
     onSetNamingMode: (GivenNameMode) -> Unit,
+    onSetNamingGender: (NamingGender) -> Unit,
     onSetActiveNamingSlot: (Int) -> Unit,
     onUpdateNamingSlotText: (Int, String) -> Unit,
     onSelectFavoriteChar: (String, Int) -> Unit
@@ -523,6 +544,34 @@ private fun SchemeEditorDialog(
                         shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2)
                     ) {
                         Text(text = stringResource(R.string.naming_mode_double))
+                    }
+                }
+
+                Text(
+                    text = stringResource(R.string.naming_gender_title),
+                    style = MaterialTheme.typography.titleSmall
+                )
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    SegmentedButton(
+                        selected = scheme.gender == NamingGender.Unisex,
+                        onClick = { onSetNamingGender(NamingGender.Unisex) },
+                        shape = SegmentedButtonDefaults.itemShape(index = 0, count = 3)
+                    ) {
+                        Text(text = stringResource(R.string.naming_gender_unisex))
+                    }
+                    SegmentedButton(
+                        selected = scheme.gender == NamingGender.Male,
+                        onClick = { onSetNamingGender(NamingGender.Male) },
+                        shape = SegmentedButtonDefaults.itemShape(index = 1, count = 3)
+                    ) {
+                        Text(text = stringResource(R.string.naming_gender_male))
+                    }
+                    SegmentedButton(
+                        selected = scheme.gender == NamingGender.Female,
+                        onClick = { onSetNamingGender(NamingGender.Female) },
+                        shape = SegmentedButtonDefaults.itemShape(index = 2, count = 3)
+                    ) {
+                        Text(text = stringResource(R.string.naming_gender_female))
                     }
                 }
 

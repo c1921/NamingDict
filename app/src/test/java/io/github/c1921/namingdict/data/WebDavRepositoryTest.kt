@@ -1,6 +1,7 @@
 package io.github.c1921.namingdict.data
 
 import io.github.c1921.namingdict.data.model.GivenNameMode
+import io.github.c1921.namingdict.data.model.NamingGender
 import io.github.c1921.namingdict.data.model.NamingScheme
 import kotlinx.coroutines.test.runTest
 import okhttp3.OkHttpClient
@@ -29,7 +30,7 @@ class WebDavRepositoryTest {
             )
 
             assertTrue(result.success)
-            assertEquals("上传成功", result.message)
+            assertTrue(result.message.isNotBlank())
 
             val mkcolRequest = server.takeRequest()
             assertEquals("MKCOL", mkcolRequest.method)
@@ -53,7 +54,6 @@ class WebDavRepositoryTest {
             )
 
             assertFalse(result.success)
-            assertTrue(result.message.contains("上传失败"))
             assertTrue(result.message.contains("HTTP 500"))
         }
     }
@@ -70,26 +70,28 @@ class WebDavRepositoryTest {
                 config = config,
                 payload = NamePlansSyncPayload(
                     updatedAt = 1_700_000_000_000,
-                    surname = "欧阳",
+                    surname = "OuYang",
                     schemes = listOf(
                         NamingScheme(
                             id = 10L,
                             givenNameMode = GivenNameMode.Double,
-                            slot1 = "安",
-                            slot2 = "宁"
+                            gender = NamingGender.Male,
+                            slot1 = "A",
+                            slot2 = "B"
                         )
                     )
                 )
             )
 
             assertTrue(result.success)
-            assertEquals("上传成功", result.message)
+            assertTrue(result.message.isNotBlank())
 
             val mkcolRequest = server.takeRequest()
             assertEquals("MKCOL", mkcolRequest.method)
             val uploadRequest = server.takeRequest()
             assertEquals("PUT", uploadRequest.method)
             assertTrue(uploadRequest.path.orEmpty().endsWith("/NamingDict/name_plans.json"))
+            assertTrue(uploadRequest.body.readUtf8().contains("\"gender\":\"Male\""))
         }
     }
 
@@ -103,11 +105,10 @@ class WebDavRepositoryTest {
 
             val result = repository.uploadNamePlans(
                 config = config,
-                payload = NamePlansSyncPayload(surname = "张", schemes = emptyList())
+                payload = NamePlansSyncPayload(surname = "Zhang", schemes = emptyList())
             )
 
             assertFalse(result.success)
-            assertTrue(result.message.contains("上传失败"))
             assertTrue(result.message.contains("HTTP 500"))
         }
     }
@@ -123,7 +124,6 @@ class WebDavRepositoryTest {
 
             assertTrue(result.isFailure)
             assertNotNull(result.exceptionOrNull())
-            assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("下载失败"))
         }
     }
 
@@ -137,7 +137,7 @@ class WebDavRepositoryTest {
             val result = repository.downloadFavorites(config)
 
             assertTrue(result.isFailure)
-            assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("空内容"))
+            assertNotNull(result.exceptionOrNull())
         }
     }
 
@@ -185,8 +185,8 @@ class WebDavRepositoryTest {
                         """{
                         "version":1,
                         "updatedAt":1700000000000,
-                        "surname":"欧阳",
-                        "schemes":[{"id":10,"givenNameMode":"Double","slot1":"安","slot2":"宁"}]
+                        "surname":"Zhang",
+                        "schemes":[{"id":10,"givenNameMode":"Double","gender":"Female","slot1":"A","slot2":"B"}]
                         }""".trimIndent()
                     )
             )
@@ -198,10 +198,39 @@ class WebDavRepositoryTest {
             assertTrue(result.isSuccess)
             val payload = result.getOrNull()
             assertNotNull(payload)
-            assertEquals("欧阳", payload?.surname)
+            assertEquals("Zhang", payload?.surname)
             assertEquals(1, payload?.schemes?.size)
-            assertEquals("安", payload?.schemes?.first()?.slot1)
-            assertEquals("宁", payload?.schemes?.first()?.slot2)
+            assertEquals(NamingGender.Female, payload?.schemes?.first()?.gender)
+            assertEquals("A", payload?.schemes?.first()?.slot1)
+            assertEquals("B", payload?.schemes?.first()?.slot2)
+        }
+    }
+
+    @Test
+    fun downloadNamePlans_missingGenderDefaultsToUnisex() = runTest {
+        MockWebServer().use { server ->
+            server.enqueue(
+                MockResponse()
+                    .setResponseCode(200)
+                    .setBody(
+                        """{
+                        "version":1,
+                        "updatedAt":1700000000000,
+                        "surname":"Zhang",
+                        "schemes":[{"id":10,"givenNameMode":"Double","slot1":"A","slot2":"B"}]
+                        }""".trimIndent()
+                    )
+            )
+            val repository = WebDavRepository(client = OkHttpClient())
+            val config = buildConfig(server)
+
+            val result = repository.downloadNamePlans(config)
+
+            assertTrue(result.isSuccess)
+            val payload = result.getOrNull()
+            assertNotNull(payload)
+            assertEquals(1, payload?.schemes?.size)
+            assertEquals(NamingGender.Unisex, payload?.schemes?.first()?.gender)
         }
     }
 

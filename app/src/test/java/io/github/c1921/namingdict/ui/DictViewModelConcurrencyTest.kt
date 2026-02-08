@@ -13,6 +13,7 @@ import io.github.c1921.namingdict.data.WebDavConfig
 import io.github.c1921.namingdict.data.WebDavRepository
 import io.github.c1921.namingdict.data.model.DictEntry
 import io.github.c1921.namingdict.data.model.GivenNameMode
+import io.github.c1921.namingdict.data.model.NamingGender
 import io.github.c1921.namingdict.data.model.NamingScheme
 import io.github.c1921.namingdict.data.model.Phonetics
 import io.github.c1921.namingdict.data.model.Structure
@@ -289,6 +290,38 @@ class DictViewModelConcurrencyTest {
     }
 
     @Test
+    fun setNamingGender_updatesSchemeAndPersists() = runMainTest {
+        val viewModel = createViewModel(
+            snapshot = UserPrefsSnapshot(
+                namingSchemes = listOf(
+                    NamingScheme(
+                        id = 10L,
+                        givenNameMode = GivenNameMode.Double,
+                        gender = NamingGender.Unisex
+                    )
+                ),
+                namingActiveSchemeId = 10L,
+                namingActiveSlotIndex = 0
+            ),
+            webDavConfig = COMPLETE_HTTPS_CONFIG,
+            autoUploadDelayMs = 100
+        )
+        advanceUntilIdle()
+
+        viewModel.setNamingGender(10L, NamingGender.Male)
+        runCurrent()
+
+        val scheme = viewModel.uiState.value.namingSchemes.first()
+        assertEquals(NamingGender.Male, scheme.gender)
+        coVerify(atLeast = 1) { userPrefsRepository.writeNamingDraft(any(), any(), any(), any()) }
+
+        advanceTimeBy(100)
+        runCurrent()
+        coVerify(exactly = 1) { webDavRepository.uploadFavorites(any(), any()) }
+        coVerify(exactly = 1) { webDavRepository.uploadNamePlans(any(), any()) }
+    }
+
+    @Test
     fun toggleFavorite_doesNotMutateNamingSchemes() = runMainTest {
         val viewModel = createViewModel(
             snapshot = UserPrefsSnapshot(
@@ -312,6 +345,32 @@ class DictViewModelConcurrencyTest {
         val scheme = viewModel.uiState.value.namingSchemes.first()
         assertEquals("x", scheme.slot1)
         assertEquals("y", scheme.slot2)
+    }
+
+    @Test
+    fun toggleFavorite_doesNotMutateNamingGender() = runMainTest {
+        val viewModel = createViewModel(
+            snapshot = UserPrefsSnapshot(
+                namingSchemes = listOf(
+                    NamingScheme(
+                        id = 10L,
+                        givenNameMode = GivenNameMode.Double,
+                        gender = NamingGender.Female,
+                        slot1 = "x",
+                        slot2 = "y"
+                    )
+                ),
+                namingActiveSchemeId = 10L,
+                namingActiveSlotIndex = 1
+            )
+        )
+        advanceUntilIdle()
+
+        viewModel.toggleFavorite(1)
+        advanceUntilIdle()
+
+        val scheme = viewModel.uiState.value.namingSchemes.first()
+        assertEquals(NamingGender.Female, scheme.gender)
     }
 
     @Test

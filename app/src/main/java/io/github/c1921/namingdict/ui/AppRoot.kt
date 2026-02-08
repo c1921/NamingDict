@@ -89,6 +89,7 @@ fun AppRoot(viewModel: DictViewModel) {
             onAddNamingScheme = viewModel::addNamingScheme,
             onRemoveNamingScheme = viewModel::removeNamingScheme,
             onSetNamingMode = viewModel::setNamingMode,
+            onSetNamingGender = viewModel::setNamingGender,
             onSetActiveNamingSlot = viewModel::setActiveNamingSlot,
             onUpdateNamingSlotText = viewModel::updateNamingSlotText,
             onFillActiveSlotFromFavorite = viewModel::fillActiveSlotFromFavorite,
