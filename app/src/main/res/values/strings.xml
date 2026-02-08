@@ -79,6 +79,12 @@
     <string name="naming_empty_schemes">暂无方案，点击“新增方案”开始编辑</string>
     <string name="naming_scheme_edit_title">编辑方案 %1$d</string>
     <string name="naming_remove_scheme">删除方案</string>
+    <string name="naming_remove_scheme_confirm_title">删除方案？</string>
+    <string name="naming_remove_scheme_confirm_message">确定删除“%1$s”吗？</string>
+    <string name="naming_cancel_new_scheme_confirm_title">放弃新增方案？</string>
+    <string name="naming_cancel_new_scheme_confirm_message">已填写内容将不会保留，确定取消吗？</string>
+    <string name="naming_cancel_edit_confirm_title">放弃修改？</string>
+    <string name="naming_cancel_edit_confirm_message">当前修改将恢复到编辑前，确定取消吗？</string>
     <string name="naming_mode_single">单字名</string>
     <string name="naming_mode_double">双字名</string>
     <string name="naming_slot_first">名第一字</string>

@@ -74,6 +74,8 @@ internal fun NameComposerScreen(
     var pendingOpenNewSchemeEditor by rememberSaveable { mutableStateOf(false) }
     var pendingPreEditActiveSchemeId by rememberSaveable { mutableStateOf<Long?>(null) }
     var pendingPreEditActiveSlotIndex by rememberSaveable { mutableStateOf(0) }
+    var pendingRemoveSchemeId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var showCancelEditConfirm by rememberSaveable { mutableStateOf(false) }
 
     val surnameDisplay = uiState.namingSurname.ifBlank {
         stringResource(R.string.naming_surname_not_set)
@@ -82,6 +84,7 @@ internal fun NameComposerScreen(
     val closeEditorSession: () -> Unit = {
         editingSchemeId = null
         editingOpenedFromAdd = false
+        showCancelEditConfirm = false
     }
     val openEditorSession: (NamingScheme, Boolean, Long?, Int) -> Unit =
         { scheme, openedFromAdd, activeSchemeId, activeSlotIndex ->
@@ -92,6 +95,7 @@ internal fun NameComposerScreen(
             editingSnapshotSlot2 = scheme.slot2
             preEditActiveSchemeId = activeSchemeId
             preEditActiveSlotIndex = activeSlotIndex.coerceIn(0, 1)
+            showCancelEditConfirm = false
         }
 
     LaunchedEffect(editingSchemeId, uiState.namingSchemes) {
@@ -122,6 +126,13 @@ internal fun NameComposerScreen(
             pendingOpenNewSchemeEditor = false
             pendingPreEditActiveSchemeId = null
             pendingPreEditActiveSlotIndex = 0
+        }
+    }
+
+    LaunchedEffect(pendingRemoveSchemeId, uiState.namingSchemes) {
+        val removeId = pendingRemoveSchemeId ?: return@LaunchedEffect
+        if (uiState.namingSchemes.none { scheme -> scheme.id == removeId }) {
+            pendingRemoveSchemeId = null
         }
     }
 
@@ -245,10 +256,7 @@ internal fun NameComposerScreen(
                             )
                         },
                         onRemove = {
-                            if (editingSchemeId == scheme.id) {
-                                closeEditorSession()
-                            }
-                            onRemoveNamingScheme(scheme.id)
+                            pendingRemoveSchemeId = scheme.id
                         }
                     )
                 }
@@ -305,7 +313,16 @@ internal fun NameComposerScreen(
             scheme = editingScheme,
             placeholder = stringResource(R.string.naming_preview_row_placeholder)
         )
-        val onCancelEdit: () -> Unit = {
+        val hasFilledContent = editingScheme.slot1.isNotBlank() || editingScheme.slot2.isNotBlank()
+        val hasContentChanged = editingScheme.givenNameMode != editingSnapshotMode ||
+            editingScheme.slot1 != editingSnapshotSlot1 ||
+            editingScheme.slot2 != editingSnapshotSlot2
+        val shouldConfirmCancel = if (editingOpenedFromAdd) {
+            hasFilledContent
+        } else {
+            hasContentChanged
+        }
+        val applyCancelEdit: () -> Unit = {
             val editingId = editingScheme.id
             if (editingOpenedFromAdd) {
                 onRemoveNamingScheme(editingId)
@@ -325,7 +342,13 @@ internal fun NameComposerScreen(
             favoriteEntries = uiState.favoriteEntries,
             onDismissRequest = closeEditorSession,
             onConfirm = closeEditorSession,
-            onCancel = onCancelEdit,
+            onCancel = {
+                if (shouldConfirmCancel) {
+                    showCancelEditConfirm = true
+                } else {
+                    applyCancelEdit()
+                }
+            },
             onSetNamingMode = { mode -> onSetNamingMode(editingScheme.id, mode) },
             onSetActiveNamingSlot = { slotIndex -> onSetActiveNamingSlot(editingScheme.id, slotIndex) },
             onUpdateNamingSlotText = { slotIndex, value ->
@@ -334,6 +357,81 @@ internal fun NameComposerScreen(
             onSelectFavoriteChar = { char, slotIndex ->
                 onSetActiveNamingSlot(editingScheme.id, slotIndex)
                 onFillActiveSlotFromFavorite(char)
+            }
+        )
+
+        if (showCancelEditConfirm) {
+            AlertDialog(
+                onDismissRequest = { showCancelEditConfirm = false },
+                title = {
+                    Text(
+                        text = if (editingOpenedFromAdd) {
+                            stringResource(R.string.naming_cancel_new_scheme_confirm_title)
+                        } else {
+                            stringResource(R.string.naming_cancel_edit_confirm_title)
+                        }
+                    )
+                },
+                text = {
+                    Text(
+                        text = if (editingOpenedFromAdd) {
+                            stringResource(R.string.naming_cancel_new_scheme_confirm_message)
+                        } else {
+                            stringResource(R.string.naming_cancel_edit_confirm_message)
+                        }
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = applyCancelEdit) {
+                        Text(text = stringResource(R.string.confirm))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showCancelEditConfirm = false }) {
+                        Text(text = stringResource(R.string.cancel))
+                    }
+                }
+            )
+        }
+    }
+
+    val pendingRemoveScheme = pendingRemoveSchemeId?.let { removeId ->
+        uiState.namingSchemes.firstOrNull { scheme -> scheme.id == removeId }
+    }
+    if (pendingRemoveScheme != null) {
+        val pendingRemovePreview = formatSchemePreview(
+            surname = uiState.namingSurname,
+            scheme = pendingRemoveScheme,
+            placeholder = stringResource(R.string.naming_preview_row_placeholder)
+        )
+        AlertDialog(
+            onDismissRequest = { pendingRemoveSchemeId = null },
+            title = { Text(text = stringResource(R.string.naming_remove_scheme_confirm_title)) },
+            text = {
+                Text(
+                    text = stringResource(
+                        R.string.naming_remove_scheme_confirm_message,
+                        pendingRemovePreview
+                    )
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (editingSchemeId == pendingRemoveScheme.id) {
+                            closeEditorSession()
+                        }
+                        onRemoveNamingScheme(pendingRemoveScheme.id)
+                        pendingRemoveSchemeId = null
+                    }
+                ) {
+                    Text(text = stringResource(R.string.confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingRemoveSchemeId = null }) {
+                    Text(text = stringResource(R.string.cancel))
+                }
             }
         )
     }
