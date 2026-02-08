@@ -19,6 +19,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
 
 data class UiState(
@@ -58,6 +59,8 @@ class DictViewModel(
     private var allIds: Set<Int> = emptySet()
     private var favoriteOrder: List<Int> = emptyList()
     private var autoUploadJob: Job? = null
+    private var recomputeFiltersJob: Job? = null
+    private val syncMutex = Mutex()
 
     init {
         load()
@@ -157,58 +160,58 @@ class DictViewModel(
 
     fun manualUploadFavorites() {
         autoUploadJob?.cancel()
-        if (_uiState.value.syncInProgress) {
-            return
-        }
         viewModelScope.launch {
-            uploadFavoritesNow(isAuto = false)
+            runSyncExclusively(isAuto = false) {
+                uploadFavoritesNow(isAuto = false)
+            }
         }
     }
 
     fun manualDownloadFavoritesOverwriteLocal() {
         autoUploadJob?.cancel()
-        if (_uiState.value.syncInProgress) {
-            return
-        }
         viewModelScope.launch {
-            val config = _uiState.value.webDavConfig
-            val httpsError = validateWebDavHttps(config, isAuto = false)
-            if (httpsError != null) {
-                postSyncMessage(httpsError)
-                return@launch
-            }
-            if (!config.isComplete()) {
-                postSyncMessage("WebDAV 配置不完整，无法下载")
-                return@launch
-            }
-
-            _uiState.value = _uiState.value.copy(syncInProgress = true)
-            val downloadResult = withContext(Dispatchers.IO) {
-                webDavRepository.downloadFavorites(config)
-            }
-            downloadResult.fold(
-                onSuccess = { payload ->
-                    val sanitizedOrder = payload.favoriteOrder
-                        .distinct()
-                        .filter { favoriteId -> idToEntry.containsKey(favoriteId) }
-                    favoriteOrder = sanitizedOrder
-                    val favoriteIds = sanitizedOrder.toSet()
-                    val favoriteEntries = sanitizedOrder.mapNotNull { idToEntry[it] }
-                    _uiState.value = _uiState.value.copy(
-                        favoriteIds = favoriteIds,
-                        favoriteEntries = favoriteEntries,
-                        syncInProgress = false,
-                        lastSyncMessage = "下载成功，已覆盖本地收藏（${favoriteIds.size}）"
-                    )
-                    persistFavoritesOrder(sanitizedOrder)
-                },
-                onFailure = { exception ->
-                    _uiState.value = _uiState.value.copy(
-                        syncInProgress = false,
-                        lastSyncMessage = "下载失败：${exception.message ?: "网络异常"}"
-                    )
+            runSyncExclusively(isAuto = false) {
+                val config = _uiState.value.webDavConfig
+                val httpsError = validateWebDavHttps(config, isAuto = false)
+                if (httpsError != null) {
+                    postSyncMessage(httpsError)
+                    return@runSyncExclusively
                 }
-            )
+                if (!config.isComplete()) {
+                    postSyncMessage("WebDAV 配置不完整，无法下载")
+                    return@runSyncExclusively
+                }
+
+                _uiState.value = _uiState.value.copy(syncInProgress = true)
+                try {
+                    val downloadResult = withContext(Dispatchers.IO) {
+                        webDavRepository.downloadFavorites(config)
+                    }
+                    downloadResult.fold(
+                        onSuccess = { payload ->
+                            val sanitizedOrder = payload.favoriteOrder
+                                .distinct()
+                                .filter { favoriteId -> idToEntry.containsKey(favoriteId) }
+                            favoriteOrder = sanitizedOrder
+                            val favoriteIds = sanitizedOrder.toSet()
+                            val favoriteEntries = sanitizedOrder.mapNotNull { idToEntry[it] }
+                            _uiState.value = _uiState.value.copy(
+                                favoriteIds = favoriteIds,
+                                favoriteEntries = favoriteEntries,
+                                lastSyncMessage = "下载成功，已覆盖本地收藏（${favoriteIds.size}）"
+                            )
+                            persistFavoritesOrder(sanitizedOrder)
+                        },
+                        onFailure = { exception ->
+                            _uiState.value = _uiState.value.copy(
+                                lastSyncMessage = "下载失败：${exception.message ?: "网络异常"}"
+                            )
+                        }
+                    )
+                } finally {
+                    _uiState.value = _uiState.value.copy(syncInProgress = false)
+                }
+            }
         }
     }
 
@@ -318,27 +321,30 @@ class DictViewModel(
     }
 
     private fun recomputeFilters(selectedValues: Map<IndexCategory, Set<String>>) {
-        viewModelScope.launch(Dispatchers.Default) {
-            val filteredIds = FilterEngine.filterIds(index, selectedValues, allIds)
-            val filteredEntries = filteredIds.mapNotNull { idToEntry[it] }.sortedBy { it.id }
-            withContext(Dispatchers.Main) {
-                val latest = _uiState.value
-                val filterChanged = latest.selectedValues != selectedValues
-                val updated = latest.copy(
-                    selectedValues = selectedValues,
-                    filteredIds = filteredIds,
-                    filteredEntries = filteredEntries,
-                    dictionaryScrollAnchorEntryId = if (filterChanged) null else latest.dictionaryScrollAnchorEntryId,
-                    dictionaryScrollOffsetPx = if (filterChanged) 0 else latest.dictionaryScrollOffsetPx
-                )
-                _uiState.value = updated
-                persistFilterState(
-                    category = updated.selectedCategory,
-                    selectedValues = updated.selectedValues
-                )
-                if (filterChanged) {
-                    persistDictionaryScrollStateToStorage(anchorEntryId = null, offsetPx = 0)
-                }
+        recomputeFiltersJob?.cancel()
+        recomputeFiltersJob = viewModelScope.launch {
+            val (filteredIds, filteredEntries) = withContext(Dispatchers.Default) {
+                val ids = FilterEngine.filterIds(index, selectedValues, allIds)
+                val entries = ids.mapNotNull { idToEntry[it] }.sortedBy { it.id }
+                ids to entries
+            }
+
+            val latest = _uiState.value
+            val filterChanged = latest.selectedValues != selectedValues
+            val updated = latest.copy(
+                selectedValues = selectedValues,
+                filteredIds = filteredIds,
+                filteredEntries = filteredEntries,
+                dictionaryScrollAnchorEntryId = if (filterChanged) null else latest.dictionaryScrollAnchorEntryId,
+                dictionaryScrollOffsetPx = if (filterChanged) 0 else latest.dictionaryScrollOffsetPx
+            )
+            _uiState.value = updated
+            persistFilterState(
+                category = updated.selectedCategory,
+                selectedValues = updated.selectedValues
+            )
+            if (filterChanged) {
+                persistDictionaryScrollStateToStorage(anchorEntryId = null, offsetPx = 0)
             }
         }
     }
@@ -428,7 +434,9 @@ class DictViewModel(
         autoUploadJob?.cancel()
         autoUploadJob = viewModelScope.launch {
             delay(AUTO_UPLOAD_DELAY_MS)
-            uploadFavoritesNow(isAuto = true)
+            runSyncExclusively(isAuto = true) {
+                uploadFavoritesNow(isAuto = true)
+            }
         }
     }
 
@@ -450,15 +458,19 @@ class DictViewModel(
         }
 
         _uiState.value = _uiState.value.copy(syncInProgress = true)
-        val payload = FavoritesSyncPayload(
-            version = 1,
-            updatedAt = System.currentTimeMillis(),
-            favoriteOrder = favoriteOrder.toList()
-        )
-        val syncResult = withContext(Dispatchers.IO) {
-            webDavRepository.uploadFavorites(config, payload)
+        try {
+            val payload = FavoritesSyncPayload(
+                version = 1,
+                updatedAt = System.currentTimeMillis(),
+                favoriteOrder = favoriteOrder.toList()
+            )
+            val syncResult = withContext(Dispatchers.IO) {
+                webDavRepository.uploadFavorites(config, payload)
+            }
+            applyUploadResult(syncResult = syncResult, isAuto = isAuto)
+        } finally {
+            _uiState.value = _uiState.value.copy(syncInProgress = false)
         }
-        applyUploadResult(syncResult = syncResult, isAuto = isAuto)
     }
 
     private fun applyUploadResult(syncResult: SyncResult, isAuto: Boolean) {
@@ -468,9 +480,22 @@ class DictViewModel(
             syncResult.message
         }
         _uiState.value = _uiState.value.copy(
-            syncInProgress = false,
             lastSyncMessage = message
         )
+    }
+
+    private suspend fun runSyncExclusively(isAuto: Boolean, block: suspend () -> Unit) {
+        if (!syncMutex.tryLock()) {
+            if (!isAuto) {
+                postSyncMessage(SYNC_IN_PROGRESS_MESSAGE)
+            }
+            return
+        }
+        try {
+            block()
+        } finally {
+            syncMutex.unlock()
+        }
     }
 
     private fun postSyncMessage(message: String) {
@@ -493,6 +518,7 @@ class DictViewModel(
         private const val AUTO_UPLOAD_DELAY_MS = 30_000L
         private const val HTTPS_REQUIRED_MESSAGE = "WebDAV 地址必须使用 HTTPS（https://）"
         private const val HTTPS_REQUIRED_SAVE_MESSAGE = "仅支持 HTTPS WebDAV 地址，请使用 https://"
+        private const val SYNC_IN_PROGRESS_MESSAGE = "同步进行中，请稍后"
 
         fun factory(
             repository: DictionaryRepository,
